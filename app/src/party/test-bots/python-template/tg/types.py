@@ -114,6 +114,5 @@ class ServerStateMessage:
     hand: Optional[Tuple[Card, Card]] = None
     in_game_players: List[PokerPlayer] = field(default_factory=list)
     spectator_players: List[PokerPlayer] = field(default_factory=list)
-    queued_players: List[PokerPlayer] = field(default_factory=list)
     players: List[PokerPlayer] = field(default_factory=list)
     last_updates: List[ServerUpdateMessage] = field(default_factory=list)

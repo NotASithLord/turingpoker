@@ -18,7 +18,7 @@ export function TableCard({
   isAdmin: boolean
 }) {
 
-  const spectatorCount = table.spectatorPlayers.length + table.queuedPlayers.length;
+  const spectatorCount = table.spectatorPlayers.length;
   
   return <div style={{ position: 'relative' }}>
     {isAdmin &&

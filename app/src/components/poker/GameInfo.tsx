@@ -30,7 +30,6 @@ export function GameInfo({
             <div className="tg-poker__table__players terminal_text">
             <h4 className="terminal_text">Players</h4>
             {serverState.spectatorPlayers
-                .concat(serverState.queuedPlayers)
                 .map((spectator, index) => (
                 <div key={index} className="tg-poker__table__players__player">
                     <p>{`Spectator ${index + 1}:`}</p>
@@ -38,10 +37,10 @@ export function GameInfo({
                 </div>
                 ))}
             {serverState.inGamePlayers
-                .map((spectator, index) => (
+                .map((player, index) => (
                 <div key={index} className="tg-poker__table__players__player">
-                    <p>{`Player ${index + 1}:`}</p>
-                    <p>{`${getPlayerStatus(spectator.playerId)}`}</p>
+                    <p>{`${player.username}:`}</p>
+                    <p>{`${getPlayerStatus(player.playerId)}`}</p>
                 </div>
                 ))}
             </div>

@@ -28,9 +28,9 @@ function GameStatus({ clientState }: { clientState: ClientState }) {
 
   return (
     <div className="tg-poker__table__gamestatus">
-      <KV label="Pot" value={`$${gameState.pot.toFixed(2)}`} />
-      <KV label="Big blind" value={`$${gameState.bigBlind.toFixed(2)}`} />
-      <KV label="Small blind" value={`$${gameState.smallBlind.toFixed(2)}`} />
+      <KV label="Pot" value={`$${gameState.pot?.toFixed(2)}`} />
+      <KV label="Big blind" value={`$${gameState.bigBlind?.toFixed(2)}`} />
+      <KV label="Small blind" value={`$${gameState.smallBlind?.toFixed(2)}`} />
     </div>
   )
 }

@@ -17,7 +17,17 @@ export type ClientState = {
   updateLog: ServerUpdateMessage[];
 };
 
+export function getUsername() {
+  let name = localStorage.getItem('username');
+  while (!name) {
+    name = prompt('Enter a username');
+  }
+  localStorage.setItem('username', name);
+  return name;
+}
+
 export default function PokerClient({ gameId }: { gameId?: string }) {
+  // if username is in local storage, use that, otherwise prompt
   let [clientState, setClientState] = useState<ClientState>({
     isConnected: false,
     serverState: null,

@@ -1,17 +1,12 @@
 import * as Poker from './game-logic/poker';
-import { IPartyServerState, IPlayer } from './poker';
+import { IPartyServerState, IPlayer, ISpectator } from './poker';
 
 export type ClientMessage = {
     type: 'action',
     action: Poker.Action
 } | {
-    type: 'start-game'
-} | {
-    type: 'spectate'
-} | {
-    type: 'join-game'
-} | {
-    type: 'reset-game'
+    type: 'join-game',
+    username: string
 }
 export type ServerUpdateMessage = {
     type: 'game-ended';
@@ -27,7 +22,6 @@ export type ServerUpdateMessage = {
 } | {
     type: 'player-left',
     player: IPlayer
-
 } | {
     type: 'game-started',
     players: IPlayer[]
@@ -40,22 +34,22 @@ export type ServerStateMessage = {
     gameState: Poker.IPokerSharedState | null;
     hand: [Poker.Card, Poker.Card] | null;
     inGamePlayers: IPlayer[];
-    spectatorPlayers: IPlayer[];
-    queuedPlayers: IPlayer[];
+    spectatorPlayers: ISpectator[];
     state: IPartyServerState;
     clientId: string;
+    username: string | null;
     lastUpdates: ServerUpdateMessage[]
     config: Poker.IPokerConfig
 }
 
 export type TableState = {
     id: string;
-    queuedPlayers: IPlayer[];
-    spectatorPlayers: IPlayer[];
+    spectatorPlayers: ISpectator[];
     inGamePlayers: IPlayer[];
     config: Poker.IPokerConfig;
     gameState: Poker.IPokerSharedState | null;
     // bump this when making breaking changes so the client doesn't try to render it
     version: number;
+    round: number;
 }
 export const TABLE_STATE_VERSION = 0;

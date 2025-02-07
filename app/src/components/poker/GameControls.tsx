@@ -2,6 +2,7 @@ import React from "react";
 import { ClientState } from "@app/client";
 import { sendMessage } from "@app/party/src/utils/websocket";
 import { useAuth } from "@clerk/clerk-react";
+import { getUsername } from "../PokerClient";
 
 function GameControls({ clientState, joinLeave }: { clientState: ClientState, joinLeave: boolean }) {
   const serverState = clientState?.serverState;
@@ -14,7 +15,7 @@ function GameControls({ clientState, joinLeave }: { clientState: ClientState, jo
   // Retrieve the current bet and minimum raise amount
   const currentBet = gameState?.targetBet;
   const minRaiseAmount = gameState?.bigBlind;
-  const currentPlayer = gameState?.players.find(player => player.id === clientState?.playerId);
+  const currentPlayer = gameState?.players.find(player => player.id === getUsername());
   const isPlayerEvenWithBet = currentPlayer?.currentBet >= currentBet;
   const socket = clientState.socket
   const isPlayerSpectating = !!serverState.spectatorPlayers?.find(p => p.playerId === clientState?.playerId)
@@ -83,20 +84,19 @@ function GameControls({ clientState, joinLeave }: { clientState: ClientState, jo
           </button>
         </div>
 
-        {joinLeave && <button
+        {joinLeave && isPlayerSpectating && <button
           onClick={() => {
-            if (playerCanJoin) {
-              sendMessage(socket, { type: "join-game" });
-            } else {
+            //if (playerCanJoin) {
+              sendMessage(socket, {
+                type: "join-game",
+                username: getUsername(),
+              });
+            /*} else {
               sendMessage(socket, { type: "spectate" });
-            }
+            }*/
           }}
         >
-          {isPlayerSpectating
-            ? "Join game"
-            : isPlayerInGame
-            ? "Leave game"
-            : "Queued to join game"}
+          Join game
         </button>}
       </div>
     </div>

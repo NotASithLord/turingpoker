@@ -11,13 +11,14 @@ import Cards from "./Cards";
 import { GameInfo } from "./GameInfo";
 import { sendMessage } from "@tg/utils/websocket";
 import useSmallScreen from "@app/hooks/useSmallScreen";
+import { getUsername } from "../PokerClient";
 
 interface Props {
   clientState: ClientState;
   previousActions: Record<string, Poker.Action>;
 }
 
-const Poker = ({ clientState, previousActions }: Props) => {
+const PokerUI = ({ clientState, previousActions }: Props) => {
   const serverState = clientState.serverState;
   console.log({ serverState })
   if (!serverState) {
@@ -38,30 +39,30 @@ const Poker = ({ clientState, previousActions }: Props) => {
   const socket = clientState.socket
   const spectatorPlayers = serverState?.spectatorPlayers.map(player => player.playerId)
   const gameState = serverState.gameState;
-  const gameHasEnoughPlayers = serverState?.inGamePlayers?.length >= serverState.config.minPlayers
   const remainingPlayersToJoin = serverState.config.minPlayers - serverState?.inGamePlayers?.length
   const inGamePlayers = serverState.gameState?.players
-  const isPlayerInGame = !!inGamePlayers?.find(p => p.id == clientState?.playerId)
+  const isPlayerInGame = !!serverState.inGamePlayers?.find(p => p.playerId == clientState?.playerId)
   const isPlayerSpectating = !!serverState.spectatorPlayers?.find(p => p.playerId == clientState?.playerId)
-  const isPlayerQueued = !!serverState.queuedPlayers?.find(p => p.playerId == clientState?.playerId)
 
-  const currentPlayer = gameState?.players.find(player => player.id === clientState?.playerId)
+  const currentPlayer = gameState?.players.find(player => player.id === getUsername())
   const isCurrentPlayerTurn = currentPlayer?.id === gameState?.whoseTurn;
   const currentTurn = gameState?.whoseTurn
   const getPlayerStatus = (playerId: string) => {
     if (serverState.spectatorPlayers.find(player => player.playerId === playerId)) return 'spectator'
-    if (serverState.queuedPlayers.find(player => player.playerId === playerId)) return 'queued'
+    const inGamePlayer = serverState.inGamePlayers.find(player => player.playerId === playerId)
+    if (!inGamePlayer) return 'not in game'
+    const username = inGamePlayer.username
 
     if (serverState.state.gamePhase == 'pending') return 'waiting'
 
-    if (gameState?.players.find(player => player.id === playerId)?.folded)
+    if (gameState?.players.find(player => player.id === username)?.folded)
       return 'folded'
 
-    if (previousActions[playerId]) {
-      const action = previousActions[playerId];
+    if (previousActions[username]) {
+      const action = previousActions[username];
       if (action.type == 'fold') return 'folded'
       else if (action.type == 'call') return 'called'
-      else if (action.type == 'raise') return 'raised ' + action.amount.toFixed(2);
+      else if (action.type == 'raise') return 'raised ' + action.amount?.toFixed(2);
     }
     return "in game"
   }
@@ -69,8 +70,8 @@ const Poker = ({ clientState, previousActions }: Props) => {
   const smallScreen = useSmallScreen();
 
   const gameOverview = [
-    { label: 'Current Pot:', value: gameState?.pot.toFixed(2), prefix: '$' },
-    { label: 'Current Bet:', value: gameState?.targetBet.toFixed(2), prefix: '$' },
+    { label: 'Current Pot:', value: gameState?.pot?.toFixed(2), prefix: '$' },
+    { label: 'Current Bet:', value: gameState?.targetBet?.toFixed(2), prefix: '$' },
     { label: 'Dealer Position:', value: (gameState?.dealerPosition + 1).toString(), prefix: '' }
   ]
 
@@ -86,7 +87,7 @@ const Poker = ({ clientState, previousActions }: Props) => {
   for (const player of gameState?.players ?? []) {
     hands[player.id] = [];
   }
-  hands[serverState.clientId] = serverState.hand ?? [];
+  hands[getUsername()] = serverState.hand ?? [];
 
   const currentPlayerIndex = gameState?.players.findIndex(player => player.id === clientState.playerId) ?? 0
   const angleOffset = -currentPlayerIndex * Math.PI*2 / (inGamePlayers?.length ?? 1);
@@ -103,17 +104,16 @@ const Poker = ({ clientState, previousActions }: Props) => {
       }}
       onClick={() => {
         if (isPlayerSpectating) {
-          sendMessage(socket, { type: "join-game" });
+          sendMessage(socket, { 
+            type: "join-game",
+            username: getUsername()
+           });
         } else {
           sendMessage(socket, { type: "spectate" });
         }
       }}
     >
-      {isPlayerSpectating
-        ? "Join game"
-        : isPlayerInGame
-        ? "Leave game"
-        : "Queued to join game"}
+      Join game
     </button>;
 
   const verticalScreen = useSmallScreen(500, 1e9);
@@ -195,8 +195,8 @@ const Poker = ({ clientState, previousActions }: Props) => {
                     hand={hands[opp.id]}
                     isCurrentPlayerTurn={opp.id === currentTurn}
                     showCards
-                    title={`Player ${index + 1}${
-                      clientState.playerId === opp.id ? " (You)" : ""
+                    title={`${opp.id}${
+                      isPlayerInGame && getUsername() === opp.id ? " (You)" : ""
                     }`}
                     dealer={index === gameState?.dealerPosition}
                   />
@@ -211,9 +211,9 @@ const Poker = ({ clientState, previousActions }: Props) => {
           <GameControls clientState={clientState} joinLeave={!smallScreen} />
         </div>
       </div>
-      {smallScreen && joinButton}
+      {smallScreen && isPlayerSpectating && joinButton}
     </div>
   );
 };
 
-export default Poker;
+export default PokerUI;

@@ -3,12 +3,16 @@ import * as Poker from '@app/party/src/game-logic/poker'
 import { ClientMessage, ServerStateMessage, ServerUpdateMessage, TABLE_STATE_VERSION, TableState } from './shared';
 import { SINGLETON_ROOM_ID } from '@app/constants/partykit';
 
-export interface IPlayer {
+export interface ISpectator {
   playerId: string;
 }
 
+export interface IPlayer extends ISpectator {
+  username: string;
+}
+
 export interface IPartyServerState {
-  gamePhase: 'pending' | 'active'
+  gamePhase: 'pending' | 'active' | 'finished'
 }
 
 export const AUTO_START = true;
@@ -21,15 +25,17 @@ export default class PartyServer implements Party.Server {
   public gameConfig: Poker.IPokerConfig = {
     dealerPosition: 0,
     bigBlind: 100,
+    maxRounds: 100,
+    timeout: 1000,
     maxPlayers: MAX_PLAYERS,
     smallBlind: 50,
     autoStart: AUTO_START,
     minPlayers: MIN_PLAYERS_AUTO_START,
   };
   public inGamePlayers: IPlayer[] = [];
-  public spectatorPlayers: IPlayer[] = [];
-  public queuedPlayers: IPlayer[] = [];
+  public spectatorPlayers: ISpectator[] = [];
   public stacks: Record<string, number> = {};
+  public roundCount: number = 0;
   public serverState: IPartyServerState = {
     gamePhase: "pending",
   };
@@ -46,17 +52,16 @@ export default class PartyServer implements Party.Server {
       // check if anyone should be disconnected
       for (const player of this.inGamePlayers) {
         // if it's not this players turn then we don't want to disconnect them
-        if (this.gameState?.state.whoseTurn != player.playerId)
-          this.lastActed[player.playerId] = Date.now();
+        if (!this.lastActed[player.username] || this.gameState?.state.whoseTurn != player.username)
+          this.lastActed[player.username] = Date.now();
         if (
           this.serverState.gamePhase == "active" &&
-          this.lastActed[player.playerId] &&
-          Date.now() - this.lastActed[player.playerId] > 300000
+          Date.now() - this.lastActed[player.username] > this.gameConfig.timeout
         ) {
-          this.playerSpectate(player.playerId);
+          this.takeDefaultAction(player.playerId);
         }
       }
-    }, 1000);
+    }, 10);
   }
 
   // Start as soon as two players are in
@@ -71,14 +76,16 @@ export default class PartyServer implements Party.Server {
   }
 
   onClose(conn: Party.Connection) {
-    this.removePlayer(conn.id);
+    // remove from spectators
+    this.spectatorPlayers = this.spectatorPlayers.filter(
+      (player) => player.playerId !== conn.id
+    );
   }
 
   onMessage(message: string, websocket: Party.Connection): void {
     try {
       let data: ClientMessage;
 
-      this.lastActed[websocket.id] = Date.now();
       if (typeof message === "string") {
         // Check if the message is string to parse it
         data = JSON.parse(message);
@@ -86,17 +93,10 @@ export default class PartyServer implements Party.Server {
         throw new Error("Invalid message type");
       }
 
-      // TODO: you shouldn't be able to start/reset game unless you are an admin
       if (data.type == "action" && Poker.isAction(data.action)) {
         this.handlePlayerAction(websocket.id, data.action);
       } else if (data.type == "join-game") {
-        this.playerJoinGame(websocket.id);
-      } else if (data.type == "start-game") {
-        this.startGame();
-      } else if (data.type == "spectate") {
-        this.playerSpectate(websocket.id);
-      } else if (data.type == "reset-game") {
-        this.endGame("system");
+        this.playerJoinGame(websocket.id, data.username);
       } else {
         console.error("Invalid message type", data);
       }
@@ -112,6 +112,32 @@ export default class PartyServer implements Party.Server {
     }
   }
 
+  takeDefaultAction(playerId: string) {
+    if (!this.gameState) {
+      return;
+    }
+    const username = this.inGamePlayers.find((p) => p.playerId === playerId)?.username;
+    const player = this.gameState.state.players.find(
+      (player) => player.id === username
+    );
+    if (!player) {
+      return;
+    }
+    if (player.folded || this.gameState.state.whoseTurn !== username) {
+      return;
+    }
+    if (player.currentBet < this.gameState.state.targetBet) {
+      this.handlePlayerAction(playerId, {
+        type: 'fold'
+      });
+    } else {
+      this.handlePlayerAction(playerId, {
+        type: 'call'
+      });
+    }
+  }
+
+
   handlePlayerAction(playerId: string, action: Poker.Action) {
     const player = this.inGamePlayers.find((p) => p.playerId === playerId);
     if (!player) {
@@ -121,19 +147,20 @@ export default class PartyServer implements Party.Server {
       );
       return;
     }
+    const username = player.username;
     if (!this.gameState) {
       console.log(
         "Player attempted to make action while game is not active",
-        playerId
+        username
       );
       return;
     }
 
     if (
-      this.gameState.state.whoseTurn !== playerId ||
+      this.gameState.state.whoseTurn !== username ||
       this.gameState.state.done
     ) {
-      console.log("Player attempted to make action out of turn", playerId);
+      console.log("Player attempted to make action out of turn", username);
       return;
     }
 
@@ -162,35 +189,25 @@ export default class PartyServer implements Party.Server {
     this.broadcastGameState();
   }
 
-  processQueuedPlayers() {
-    for (const p of this.queuedPlayers) {
-      this.queuedUpdates.push({
-        type: "player-joined",
-        player: {
-          playerId: p.playerId,
-        },
-      });
-      this.inGamePlayers.push(p);
-    }
-    this.queuedPlayers = [];
-  }
-
   startGame() {
+    if (this.roundCount >= this.gameConfig.maxRounds) {
+      return;
+    }
     if (this.gameState && !this.gameState.state.done) {
       return;
     }
+    /*
+    Shouldn't do this
     // if anyone has zero chips just reset them to 1000
-    for (const player of this.inGamePlayers.concat(this.queuedPlayers)) {
-      this.lastActed[player.playerId] = Date.now();
-      if (this.stacks[player.playerId] <= 0) {
-        this.stacks[player.playerId] = defaultStack;
+    for (const player of this.inGamePlayers) {
+      if (this.stacks[player.username] <= 0) {
+        this.stacks[player.username] = defaultStack;
       }
-    }
-    this.processQueuedPlayers();
+    }*/
     this.gameState = Poker.createPokerGame(
       this.gameConfig,
-      this.inGamePlayers.map((p) => p.playerId),
-      this.inGamePlayers.map((p) => this.stacks[p.playerId])
+      this.inGamePlayers.map((p) => p.username),
+      this.inGamePlayers.map((p) => this.stacks[p.username])
     );
     this.serverState.gamePhase = "active";
 
@@ -200,17 +217,12 @@ export default class PartyServer implements Party.Server {
     });
 
     this.broadcastGameState();
-
-    setTimeout(() => {
-      this.broadcastGameState();
-    }, 3000);
   }
 
   endGame(reason: "showdown" | "fold" | "system") {
     if (!this.gameState) {
       return;
     }
-    this.processQueuedPlayers();
 
     const { payouts, log } = Poker.payout(
       this.gameState.state,
@@ -223,10 +235,10 @@ export default class PartyServer implements Party.Server {
         message,
       });
     }
-    for (const playerId in payouts) {
-      this.stacks[playerId] =
-        (this.gameState.state.players.find((player) => player.id == playerId)
-          ?.stack ?? 0) + payouts[playerId];
+    for (const username in payouts) {
+      this.stacks[username] =
+        (this.gameState.state.players.find((player) => player.id == username)
+          ?.stack ?? 0) + payouts[username];
     }
     this.serverState.gamePhase = "pending";
     this.queuedUpdates.push({
@@ -235,8 +247,12 @@ export default class PartyServer implements Party.Server {
       reason,
     });
     this.gameState = null;
-    this.broadcastGameState();
     this.gameConfig.dealerPosition = (this.gameConfig.dealerPosition + 1) % this.inGamePlayers.length;
+    this.roundCount++;
+    if (this.roundCount >= this.gameConfig.maxRounds) {
+      this.serverState.gamePhase = "finished";
+    }
+    this.broadcastGameState();
     if (this.gameConfig.autoStart && this.inGamePlayers.length >= MIN_PLAYERS_AUTO_START) {
       this.startGame();
     }
@@ -245,13 +261,15 @@ export default class PartyServer implements Party.Server {
   getStateMessage(playerId: string): ServerStateMessage {
     const isSpectator =
       this.spectatorPlayers.map((s) => s.playerId).indexOf(playerId) !== -1;
-    console.log(this.gameState?.hands);
+
+    const username = this.inGamePlayers.find((p) => p.playerId === playerId)?.username;
+
     return {
       gameState: this.gameState?.state ?? null,
-      hand: this.gameState?.hands?.[playerId] ?? null,
+      hand: this.gameState?.hands?.[username ?? ''] ?? null,
       inGamePlayers: this.inGamePlayers,
       spectatorPlayers: this.spectatorPlayers,
-      queuedPlayers: this.queuedPlayers,
+      username: username ?? null,
       config: this.gameConfig,
       state: this.serverState,
       clientId: playerId,
@@ -260,9 +278,8 @@ export default class PartyServer implements Party.Server {
   }
 
   broadcastGameState() {
-    for (const player of this.inGamePlayers
-      .concat(this.spectatorPlayers)
-      .concat(this.queuedPlayers)) {
+    for (const player of this.spectatorPlayers
+      .concat(this.inGamePlayers)) {
       const message: ServerStateMessage = this.getStateMessage(player.playerId);
 
       // Send game state; ensure spectators do not receive any cards information
@@ -274,13 +291,13 @@ export default class PartyServer implements Party.Server {
     this.queuedUpdates = [];
 
     const tableState: TableState = {
-      queuedPlayers: this.queuedPlayers,
       spectatorPlayers: this.spectatorPlayers,
       inGamePlayers: this.inGamePlayers,
       config: this.gameConfig,
       gameState: this.gameState?.state ?? null,
       id: this.party.id,
-      version: TABLE_STATE_VERSION
+      version: TABLE_STATE_VERSION,
+      round: this.roundCount,
     }
 
     return this.party.context.parties.tables.get(SINGLETON_ROOM_ID).fetch({
@@ -293,43 +310,45 @@ export default class PartyServer implements Party.Server {
     });
   }
 
-  playerSpectate(playerId: string) {
-    this.removePlayer(playerId);
-    this.spectatorPlayers.push({
-      playerId,
-    });
-    this.queuedUpdates.push({
-      type: "player-left",
-      player: {
-        playerId,
-      },
-    });
-    this.broadcastGameState();
-  }
-
-  playerJoinGame(playerId: string) {
-    if (
-      this.queuedPlayers.find((player) => player.playerId === playerId) ||
-      this.inGamePlayers.find((player) => player.playerId === playerId)
-    )
+  playerJoinGame(playerId: string, username: string) {
+    if (this.inGamePlayers.find((player) => player.playerId === playerId)) {
       return;
+    }
+
+    // Check if there is a player with same username and different id in the game
+    const existingPlayer = this.inGamePlayers.find((player) => player.username === username);
+    if (existingPlayer) {
+      console.log('conflicting username')
+      // Check if the id is connected
+      if (!this.party.getConnection(existingPlayer.playerId)) {
+        console.log('no connection')
+        // If the id is not connected, update the id to this one
+        existingPlayer.playerId = playerId; // (update by reference)
+        console.log(existingPlayer)
+        // remove the old player from the spectator list
+        this.spectatorPlayers = this.spectatorPlayers.filter(
+          (player) => player.playerId !== playerId
+        );
+        this.broadcastGameState();
+      }
+      return;
+    }
 
     this.spectatorPlayers = this.spectatorPlayers.filter(
       (player) => player.playerId !== playerId
     );
     if (this.serverState.gamePhase === "pending") {
+      this.stacks[username] = defaultStack;
       this.inGamePlayers.push({
         playerId,
+        username
       });
       this.queuedUpdates.push({
         type: "player-joined",
         player: {
           playerId,
+          username
         },
-      });
-    } else {
-      this.queuedPlayers.push({
-        playerId,
       });
     }
 
@@ -346,69 +365,22 @@ export default class PartyServer implements Party.Server {
 
   addPlayer(playerId: string) {
     if (this.playerExists(playerId)) return;
-    this.stacks[playerId] = defaultStack;
     this.spectatorPlayers.push({
-      playerId,
+      playerId
     });
 
     this.broadcastGameState();
   }
 
   playerExists(playerId: string) {
+    const playerCmp = (player: ISpectator) => player.playerId === playerId
+
     return (
-      this.inGamePlayers.find((player) => player.playerId === playerId) !==
+      this.inGamePlayers.find(playerCmp) !==
         undefined ||
-      this.spectatorPlayers.find((player) => player.playerId === playerId) !==
-        undefined ||
-      this.queuedPlayers.find((player) => player.playerId === playerId) !==
+      this.spectatorPlayers.find(playerCmp) !==
         undefined
     );
-  }
-
-  removePlayer(playerId: string) {
-    // Attempt to remove from players list first
-    // remove from all of spectatorPlayers, players, and inGamePlayers, and queuedPlayers
-    if (this.serverState.gamePhase == "active" && this.gameState) {
-      try {
-        const { next, log } = Poker.forcedFold(this.gameState, playerId);
-        this.gameState = next;
-        for (const message of log) {
-          this.queuedUpdates.push({
-            type: "engine-log",
-            message,
-          });
-        }
-      } catch (e) {
-        console.error("Error in forced fold", e);
-      }
-    }
-    this.spectatorPlayers = this.spectatorPlayers.filter(
-      (player) => player.playerId !== playerId
-    );
-    this.inGamePlayers = this.inGamePlayers.filter(
-      (player) => player.playerId !== playerId
-    );
-    this.queuedPlayers = this.queuedPlayers.filter(
-      (player) => player.playerId !== playerId
-    );
-    this.queuedUpdates.push({
-      type: "player-left",
-      player: {
-        playerId,
-      },
-    });
-
-    // it's important to remove the players before ending the game since if autostart is on
-    // we don't want the removed player to get added
-    if (this.gameState?.state.done) {
-      this.endGame(
-        this.gameState?.state?.round === "showdown" ? "showdown" : "fold"
-      );
-    } else if (this.inGamePlayers.length < 2) {
-      this.endGame("fold");
-    }
-
-    this.broadcastGameState();
   }
 
   /** Remove this room from the room listing party */

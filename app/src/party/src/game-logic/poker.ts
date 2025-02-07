@@ -59,6 +59,7 @@ function prevRound(round: PokerRound | null): PokerRound {
 }
 
 export type PlayerID = string;
+export type PlayerUsername = string;
 
 export interface IPokerPlayer {
     id: PlayerID;
@@ -74,8 +75,10 @@ export interface IPokerConfig {
     smallBlind: number;
     bigBlind: number;
     maxPlayers: number;
-    autoStart: boolean
-    minPlayers: number
+    autoStart: boolean;
+    minPlayers: number;
+    maxRounds: number;
+    timeout: number;
 }
 
 export interface IPokerSharedState {

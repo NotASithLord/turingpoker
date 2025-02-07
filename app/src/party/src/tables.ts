@@ -74,7 +74,7 @@ export default class TablesServer implements Party.Server {
     }
 
     const info = update.tableState;
-    if (info.queuedPlayers.length + info.spectatorPlayers.length + info.inGamePlayers.length == 0) {
+    if (info.spectatorPlayers.length + info.inGamePlayers.length == 0) {
       // if no users are present, delete the room
       await this.party.storage.delete(update.id);
       return this.getActiveRooms();
