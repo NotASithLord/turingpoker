@@ -19,14 +19,14 @@ export const AUTO_START = true;
 export const MIN_PLAYERS_AUTO_START = 2;
 export const MAX_PLAYERS = 8
 
-const defaultStack = 1000;
 export default class PartyServer implements Party.Server {
   public gameState: Poker.IPokerGame | null = null;
   public gameConfig: Poker.IPokerConfig = {
+    defaultStack: 1000,
     dealerPosition: 0,
     bigBlind: 100,
     maxRounds: 100,
-    timeout: 1000,
+    timeout: 1e9,
     maxPlayers: MAX_PLAYERS,
     smallBlind: 50,
     autoStart: AUTO_START,
@@ -48,6 +48,16 @@ export default class PartyServer implements Party.Server {
   constructor(public readonly party: Party.Party) {}
 
   onStart(): void | Promise<void> {
+    // read game config from room id
+    const roomId = this.party.id;
+    const config = roomId.split('-').slice(1);
+    for (const s of config) {
+      const [key, val] = s.split('=');
+      if (key in this.gameConfig) {
+        this.gameConfig[key] = parseInt(val);
+      }
+    }
+
     this.timeoutLoopInterval = setInterval(() => {
       // check if anyone should be disconnected
       for (const player of this.inGamePlayers) {
@@ -272,6 +282,8 @@ export default class PartyServer implements Party.Server {
       username: username ?? null,
       config: this.gameConfig,
       state: this.serverState,
+      roundCount: this.roundCount,
+      stacks: this.stacks,
       clientId: playerId,
       lastUpdates: this.queuedUpdates,
     };
@@ -324,7 +336,7 @@ export default class PartyServer implements Party.Server {
         console.log('no connection')
         // If the id is not connected, update the id to this one
         existingPlayer.playerId = playerId; // (update by reference)
-        console.log(existingPlayer)
+        console.log(existingPlayer, this.inGamePlayers)
         // remove the old player from the spectator list
         this.spectatorPlayers = this.spectatorPlayers.filter(
           (player) => player.playerId !== playerId
@@ -338,7 +350,7 @@ export default class PartyServer implements Party.Server {
       (player) => player.playerId !== playerId
     );
     if (this.serverState.gamePhase === "pending") {
-      this.stacks[username] = defaultStack;
+      this.stacks[username] = this.gameConfig.defaultStack;
       this.inGamePlayers.push({
         playerId,
         username

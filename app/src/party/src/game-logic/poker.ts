@@ -71,6 +71,7 @@ export interface IPokerPlayer {
 }
 
 export interface IPokerConfig {
+    defaultStack: number;
     dealerPosition: number;
     smallBlind: number;
     bigBlind: number;

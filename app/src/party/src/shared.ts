@@ -38,8 +38,10 @@ export type ServerStateMessage = {
     state: IPartyServerState;
     clientId: string;
     username: string | null;
-    lastUpdates: ServerUpdateMessage[]
-    config: Poker.IPokerConfig
+    lastUpdates: ServerUpdateMessage[];
+    stacks: { [username: string]: number };
+    config: Poker.IPokerConfig;
+    roundCount: number;
 }
 
 export type TableState = {

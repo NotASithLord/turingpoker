@@ -150,6 +150,27 @@ const PokerUI = ({ clientState, previousActions }: Props) => {
     }
   }
 
+  console.log(serverState)
+  const gameOverPage = 
+      <div
+        style={{
+          flex: 1,
+          flexDirection: "column",
+          display: "flex",
+          alignItems: "center",
+          paddingTop: "12px",
+          justifyContent: "flex-start",
+          color: 'black'
+        }}
+      >
+      <h1>This game has ended</h1>
+      <h2>Final standings:</h2>
+      {
+        Object
+          .entries(serverState.stacks).toSorted((a, b) => b[1] - a[1])
+          .map(([player, stack]) => <div key={player}>{player}: ${stack.toFixed(2)}</div>)
+      }
+  </div>
 
   // show game table
   return (
@@ -159,7 +180,9 @@ const PokerUI = ({ clientState, previousActions }: Props) => {
         serverState={serverState}
         getPlayerStatus={getPlayerStatus}
       />
-
+      { serverState.state.gamePhase === 'finished' ?
+        gameOverPage
+      :  <>
       <div
         style={{
           flex: 1,
@@ -211,7 +234,7 @@ const PokerUI = ({ clientState, previousActions }: Props) => {
           <GameControls clientState={clientState} joinLeave={!smallScreen} />
         </div>
       </div>
-      {smallScreen && isPlayerSpectating && joinButton}
+      {smallScreen && isPlayerSpectating && joinButton}</>}
     </div>
   );
 };
