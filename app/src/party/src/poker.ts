@@ -310,6 +310,7 @@ export default class PartyServer implements Party.Server {
       id: this.party.id,
       version: TABLE_STATE_VERSION,
       round: this.roundCount,
+      stacks: this.stacks,
     }
 
     return this.party.context.parties.tables.get(SINGLETON_ROOM_ID).fetch({

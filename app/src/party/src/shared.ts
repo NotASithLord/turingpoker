@@ -49,6 +49,7 @@ export type TableState = {
     spectatorPlayers: ISpectator[];
     inGamePlayers: IPlayer[];
     config: Poker.IPokerConfig;
+    stacks: { [username: string]: number };
     gameState: Poker.IPokerSharedState | null;
     // bump this when making breaking changes so the client doesn't try to render it
     version: number;
