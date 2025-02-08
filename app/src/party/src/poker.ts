@@ -263,7 +263,7 @@ export default class PartyServer implements Party.Server {
       this.serverState.gamePhase = "finished";
     }
     this.broadcastGameState();
-    if (this.gameConfig.autoStart && this.inGamePlayers.length >= MIN_PLAYERS_AUTO_START) {
+    if (this.gameConfig.autoStart && this.inGamePlayers.length >= this.gameConfig.minPlayers) {
       this.startGame();
     }
   }
