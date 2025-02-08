@@ -368,7 +368,7 @@ export default class PartyServer implements Party.Server {
     if (
       this.gameConfig.autoStart &&
       this.serverState.gamePhase === "pending" &&
-      this.inGamePlayers.length >= MIN_PLAYERS_AUTO_START
+      this.inGamePlayers.length >= this.gameConfig.minPlayers
     ) {
       this.startGame();
     } else {
