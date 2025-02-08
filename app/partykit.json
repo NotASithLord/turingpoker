@@ -4,7 +4,8 @@
   "main": "src/party/src/main.ts",
   "parties": {
     "poker": "src/party/src/poker.ts",
-    "tables": "src/party/src/tables.ts"
+    "tables": "src/party/src/tables.ts",
+    "kuhn": "src/party/src/kuhn.ts"
   },
   "compatibilityDate": "2024-04-08"
 }
